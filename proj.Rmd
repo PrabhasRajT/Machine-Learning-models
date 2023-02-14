@@ -1,0 +1,429 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+1)reading the dataset
+```{r}
+hcdsd=read.csv("C:/Users/prabh/Downloads/healthcare-dataset-stroke-data (1).csv",stringsAsFactors = TRUE)
+hcdsd
+```
+as id is unique, let's remove "id" variable
+```{r}
+hcdsd$id=NULL
+```
+Let's see the structure and summary of the dataset
+```{r}
+str(hcdsd)
+summary(hcdsd)
+```
+```{r}
+sapply(colnames(hcdsd), function(x) class(hcdsd[[x]]))
+which(is.na(hcdsd))
+colSums(is.na(hcdsd))
+```
+ans: There are 5 categorical variables and 7 numeric variables(including "id").
+     There are 201 missing values in the variable- "bmi".
+
+```{r}
+prop.table(table(hcdsd$stroke))
+```
+
+let's convert the stroke variable into factor and explore it by seeing the percentage of each level.
+```{r}
+hcdsd$stroke=factor(hcdsd$stroke)
+levels(hcdsd$stroke)=list(No ="0", Yes="1")
+prop.table(table(hcdsd$stroke))
+
+```
+By this, we can understand that the stroke(output) variable is imbalanced.
+1 if the patient had a stroke - 4%
+0 if the patient did not had a stroke - 95%
+
+```{r}
+hcdsd$hypertension=factor(hcdsd$hypertension, levels=c("0","1"), labels = c("No", "Yes"))
+hcdsd$heart_disease=factor(hcdsd$heart_disease, levels=c("0","1"), labels = c("No", "Yes"))
+```
+
+Exploratory data analysis
+```{r}
+table1<-table(hcdsd$stroke,hcdsd$gender)
+mosaicplot(table1, main = "Mosaic plot of stroke VS gender", shade = TRUE)
+chisq.test(table1)
+table2<-table(hcdsd$stroke,hcdsd$hypertension)
+mosaicplot(table2, main = "Mosaic plot of stroke VS hypertension", shade = TRUE)
+chisq.test(table2)
+table3<-table(hcdsd$stroke,hcdsd$heart_disease)
+mosaicplot(table3, main = "Mosaic plot of stroke VS heart_disease", shade = TRUE)
+chisq.test(table3)
+table4<-table(hcdsd$stroke,hcdsd$ever_married)
+mosaicplot(table4, main = "Mosaic plot of stroke VS ever_married", shade = TRUE)
+chisq.test(table4)
+table5<-table(hcdsd$stroke,hcdsd$work_type)
+mosaicplot(table5, main = "Mosaic plot of stroke VS work_type", shade = TRUE)
+chisq.test(table5)
+table6<-table(hcdsd$stroke,hcdsd$Residence_type)
+mosaicplot(table6, main = "Mosaic plot of stroke VS Residence_type", shade = TRUE)
+chisq.test(table6)
+table7<-table(hcdsd$stroke,hcdsd$smoking_status)
+mosaicplot(table7, main = "Mosaic plot of stroke VS smoking_status", shade = TRUE)
+chisq.test(table7)
+plot(hcdsd$age~hcdsd$stroke)
+t.test(hcdsd$age~hcdsd$stroke)
+plot(hcdsd$avg_glucose_level~hcdsd$stroke)
+t.test(hcdsd$avg_glucose_level~hcdsd$stroke)
+plot(hcdsd$bmi~hcdsd$stroke)
+t.test(hcdsd$bmi~hcdsd$stroke)
+```
+ans: variables- hypertension, heart_disease, ever_married, work_type, smoking_status, age, avg_glucose_level, bmi are associated with "stroke" variable
+
+Using caret's createDataPartition method to partition the dataset to 80% training and 20% testing.
+```{r}
+library(caret)
+intrain= createDataPartition(hcdsd$stroke, p=0.8, list= FALSE)
+hcdsd_train= hcdsd[intrain,]
+
+hcdsd_test = hcdsd[-intrain,]
+```
+
+```{r}
+hcdsd_train$bmi[is.na(hcdsd_train$bmi)] <- mean(hcdsd_train$bmi,na.rm=TRUE)
+hcdsd_test$bmi[is.na(hcdsd_test$bmi)] <- mean(hcdsd_train$bmi,na.rm=TRUE)
+colSums(is.na(hcdsd_train))
+colSums(is.na(hcdsd_test))
+```
+
+```{r}
+str(hcdsd_train)
+```
+```{r}
+str(hcdsd_train$stroke)
+```
+
+
+
+Lasso Linear Regression model 
+```{r}
+library(caret)
+library(RANN)
+library(ROCR)
+set.seed(1)
+lasso <-train(stroke ~ ., data = hcdsd_train, method = "glmnet",verbose=FALSE, metric ="ROC",
+trControl= trainControl("cv", number = 10, classProbs= TRUE, summaryFunction= twoClassSummary, sampling="smote"),
+tuneGrid= expand.grid(alpha = 1, lambda = 10^seq(-3, 3, length = 100)))
+
+coef(lasso$finalModel, lasso$bestTune$lambda)
+
+predictions <-predict(lasso,hcdsd_test,na.action = na.pass, type="prob")
+lasso_predictions= prediction(predictions$Yes,hcdsd_test$stroke)
+lasso_predicted_labels= predict(lasso, hcdsd_test)
+confusionMatrix(lasso_predicted_labels, hcdsd_test$stroke, positive="Yes", mode="everything")
+performance(lasso_predictions, measure = "auc")@y.values
+```
+
+
+Ridge Linear Regression model
+```{r}
+set.seed(1)
+ridge <-train(stroke ~ ., data = hcdsd_train, method = "glmnet", na.action=na.pass, preProc="knnImpute",verbose=FALSE, metric ="ROC",
+trControl= trainControl("cv", number = 10,classProbs= TRUE, summaryFunction= twoClassSummary, sampling="down"),
+tuneGrid= expand.grid(alpha = 0, lambda = 10^seq(-3, 3, length = 100)))
+
+predictions1 <-predict(ridge,hcdsd_test,na.action=na.pass, type="prob")
+ridge_predictions= prediction(predictions1$Yes,hcdsd_test$stroke)
+ridge_predicted_labels= predict(ridge, hcdsd_test)
+confusionMatrix(ridge_predicted_labels, hcdsd_test$stroke, positive="Yes", mode="everything")
+performance(ridge_predictions, measure = "auc")@y.values
+```
+
+
+Elastic-net Linear Regression model
+```{r}
+set.seed(1)
+enet<-train(stroke ~ ., data = hcdsd_train, method = "glmnet", na.action=na.pass, preProc="knnImpute",verbose=FALSE, metric ="ROC",
+trControl= trainControl("cv", number = 10,classProbs= TRUE, summaryFunction= twoClassSummary, sampling="down"),
+tuneGrid= expand.grid(alpha =seq(0,1, length=10), lambda = 10^seq(-3, 3, length = 100)))
+
+predictions2 <-predict(enet,hcdsd_test,na.action=na.pass, type="prob")
+enet_predictions= prediction(predictions2$Yes,hcdsd_test$stroke)
+enet_predicted_labels= predict(enet, hcdsd_test)
+confusionMatrix(enet_predicted_labels, hcdsd_test$stroke, positive="Yes", mode="everything")
+performance(enet_predictions, measure = "auc")@y.values
+
+```
+
+Random forest model
+```{r}
+set.seed(1)
+library(caret)
+m_rf<-train(stroke ~ ., data = hcdsd_train,preProc=c("nzv","knnImpute"),importance=T,method = "rf", verbose=FALSE, metric ="ROC", trControl= trainControl(method = "cv", number = 10,classProbs= TRUE, summaryFunction= twoClassSummary, sampling="down"))
+m_rf
+predictions3<-predict(m_rf, hcdsd_test, type = "prob")
+rf_predictions= prediction(predictions3$Yes,hcdsd_test$stroke)
+rf_predicted_labels= predict(m_rf, hcdsd_test)
+confusionMatrix(rf_predicted_labels, hcdsd_test$stroke, positive="Yes", mode="everything")
+performance(rf_predictions, measure = "auc")@y.values
+```
+```{r}
+varImp(m_rf)
+```
+```{r}
+t=table(hcdsd_train$stroke)
+t
+w_yes=sum(t)/(t["Yes"]*2)
+w_no=sum(t)/(t["No"]*2)
+w_yes
+w_no
+class_weights= ifelse(hcdsd_train$stroke=="Yes", w_yes, w_no)
+str(class_weights)
+```
+
+Gradient Boosted Tree model
+```{r}
+library(caret)
+library(ROCR)
+set.seed(1)
+ctrl=trainControl(method="cv", number=10, classProbs= TRUE, summaryFunction= twoClassSummary,sampling="down")
+gbm<-train(stroke ~ ., data = hcdsd_train, method = "gbm",preProc="nzv", verbose=FALSE, metric ="ROC", trControl= ctrl)
+gbm
+gbm_predictions_prob=predict(gbm, hcdsd_test, type="prob")
+gbm_predictions= prediction(gbm_predictions_prob$Yes,hcdsd_test$stroke)
+performance(gbm_predictions, measure = "auc")@y.values
+gbm_predicted_labels= predict(gbm, hcdsd_test)
+confusionMatrix(gbm_predicted_labels, hcdsd_test$stroke, positive="Yes", mode="everything")
+```
+
+Support vector machine model with method="svmLinear"
+```{r}
+set.seed(1)
+library(caret)
+svm<-train(
+stroke ~ ., data = hcdsd_train, method = "svmLinear",verbose=FALSE, metric ="ROC",
+trControl= trainControl("cv", number = 10, classProbs= TRUE, summaryFunction= twoClassSummary,sampling="down"))
+svm
+predictions4<-predict(svm,hcdsd_test,type="prob")
+svm_predictions= prediction(predictions4$Yes,hcdsd_test$stroke)
+svm_predicted_labels= predict(svm, hcdsd_test)
+confusionMatrix(svm_predicted_labels, hcdsd_test$stroke, positive="Yes", mode="everything")
+performance(svm_predictions, measure = "auc")@y.values
+```
+
+Support vector machine model with method="svmRadial"
+```{r}
+library(caret)
+set.seed(1)
+svm_rad<-train(
+stroke ~ ., data = hcdsd_train, method = "svmRadial",verbose=FALSE, metric ="ROC",
+trControl= trainControl("cv", number = 10,classProbs= TRUE, summaryFunction= twoClassSummary,sampling="down"))
+svm_rad
+predictions4_rad<-predict(svm_rad,hcdsd_test,type="prob")
+svm_rad_predictions= prediction(predictions4_rad$Yes,hcdsd_test$stroke)
+svm_rad_predicted_labels= predict(svm_rad, hcdsd_test)
+confusionMatrix(svm_rad_predicted_labels, hcdsd_test$stroke, positive="Yes", mode="everything")
+performance(svm_rad_predictions, measure = "auc")@y.values
+```
+
+
+```{r}
+compare=resamples(list(L=lasso,R=ridge,E=enet,RF=m_rf,G=gbm,S=svm,SR=svm_rad))
+summary(compare)
+```
+```{r}
+str(hcdsd_train)
+str(hcdsd_test)
+```
+Neural networks require a numeric target variable. In case of a binary classification, the target variable must be coded as 0 and 1. so, converting stroke into numeric.
+```{r}
+#hcdsd_train$stroke=as.integer(hcdsd_train$stroke)
+hcdsd_train$stroke=as.numeric(hcdsd_train$stroke)-1
+hcdsd_train$hypertension=as.numeric(hcdsd_train$hypertension)
+hcdsd_train$heart_disease=as.numeric(hcdsd_train$heart_disease)
+
+hcdsd_test$stroke=as.numeric(hcdsd_test$stroke)-1
+hcdsd_test$hypertension=as.numeric(hcdsd_test$hypertension)
+hcdsd_test$heart_disease=as.numeric(hcdsd_test$heart_disease)
+```
+The categorical variables ever_married, Residence_type have only two levels so we just convert it to a binary vector
+```{r}
+hcdsd_train$ever_married=ifelse(hcdsd_train$ever_married=="No",0,1)
+hcdsd_train$Residence_type=ifelse(hcdsd_train$Residence_type=="Rural",0,1)
+
+hcdsd_test$ever_married=ifelse(hcdsd_test$ever_married=="No",0,1)
+hcdsd_test$Residence_type=ifelse(hcdsd_test$Residence_type=="Rural",0,1)
+```
+The rest of the categorical variables (gender, work_type,smoking_status) don’t have a natural ordering so we one-hot-encode them.
+```{r}
+library(mltools)
+library(data.table)
+hcdsd_train= data.frame(one_hot(as.data.table(hcdsd_train),dropUnusedLevels = FALSE))
+hcdsd_test= data.frame(one_hot(as.data.table(hcdsd_test),dropUnusedLevels = FALSE))
+```
+```{r}
+str(hcdsd_train)
+str(hcdsd_test)
+```
+```{r}
+hcdsd_train
+```
+
+
+
+```{r}
+numeric_cols=c("age","avg_glucose_level","bmi")
+col_means_train<-attr(scale(hcdsd_train[,numeric_cols]), "scaled:center")
+col_stddevs_train<-attr( scale(hcdsd_train[,numeric_cols]), "scaled:scale")
+```
+down sampling for neural networks
+```{r}
+hcdsd_train1= hcdsd_train[hcdsd_train$stroke==0,]
+hcdsd_train1
+hcdsd_train2= hcdsd_train[hcdsd_train$stroke==1,]
+hcdsd_train2
+```
+```{r}
+train_sample<-sample(3889, 200)
+hcdsd_train3<-hcdsd_train1[train_sample,]
+hcdsd_train3
+```
+```{r}
+hcdsd_train4<-rbind(hcdsd_train3, hcdsd_train2)
+hcdsd_train4
+```
+
+
+```{r}
+library(caret)
+intrain1= createDataPartition(hcdsd_train$stroke, p=0.9, list= FALSE)
+hcdsd_train_x= hcdsd_train[intrain1, -20]
+hcdsd_train_y= hcdsd_train[intrain1, 20]
+
+hcdsd_val_x= hcdsd_train[-intrain1, -20]
+hcdsd_val_y= hcdsd_train[-intrain1, 20]
+```
+```{r}
+numeric_cols=c("age","avg_glucose_level","bmi")
+col_means_train1<-attr(scale(hcdsd_train4[,numeric_cols]), "scaled:center")
+col_stddevs_train1<-attr( scale(hcdsd_train4[,numeric_cols]), "scaled:scale")
+```
+
+```{r}
+hcdsd_train_x[numeric_cols]= scale(hcdsd_train_x[numeric_cols])
+hcdsd_val_x[numeric_cols]= scale(hcdsd_val_x[numeric_cols], center = col_means_train, scale = col_stddevs_train)
+hcdsd_test[numeric_cols]<-scale(hcdsd_test[numeric_cols], center = col_means_train, scale = col_stddevs_train)
+```
+
+```{r}
+str(hcdsd_train_x)
+```
+
+```{r}
+library(keras)
+model <-keras_model_sequential() %>%
+layer_dense(units = 32, activation = "relu",
+input_shape= dim(hcdsd_train_x)[2]) %>%
+layer_dense(units = 32,activation="relu" )%>%
+layer_dense(units = 1, activation="sigmoid")
+model %>% compile(
+loss = "binary_crossentropy",
+optimizer = "adam" , metrics="AUC")
+model %>% fit(as.matrix(hcdsd_train_x),hcdsd_train_y,batch_size=50,epochs = 20,verbose=2, validation_data=list(as.matrix(hcdsd_val_x),hcdsd_val_y),class_weight=list("0"=w_no, "1"=w_yes))
+```
+```{r}
+str(hcdsd_train_x)
+```
+
+```{r}
+str(hcdsd_test)
+```
+
+
+```{r}
+predicted_probs= model%>% predict(as.matrix(hcdsd_test[,-20]))
+ann_predictions= prediction(predicted_probs,hcdsd_test[,20])
+performance(ann_predictions, measure = "auc")@y.values
+```
+
+```{r}
+predicted.labels= factor(ifelse(predicted_probs>0.5, "1", "0"))
+confusionMatrix(predicted.labels, as.factor(hcdsd_test[,20]), mode="everything", positive="1")
+```
+
+```{r}
+library(tfruns)
+ runs=tuning_run("hcdsd_hyperparameters.R",
+            flags = list(
+              learning_rate = c(0.1, 0.01, 0.001, 0.0001),
+              batch_size = c(32,32,1),
+              activation_function = c("relu","sigmoid","tanh"),
+              units1= c(16,32,64,128),
+              units2= c(16,32,64,128)
+            ),
+            sample = 0.01 
+ )
+```
+
+```{r}
+runs=runs[order(runs$metric_val_auc, decreasing=TRUE),]
+runs
+```
+```{r}
+view_run(runs$run_dir[4])
+```
+```{r}
+hcdsd_train_new=rbind(hcdsd_train_x,hcdsd_val_x)
+hcdsd_train_newlabels=c(hcdsd_train_y,hcdsd_val_y)
+```
+
+
+```{r}
+model <-keras_model_sequential() %>%
+layer_dense(units = 128, activation = "relu",
+input_shape= dim(hcdsd_train_new)[2]) %>%
+layer_dense(units = 128,activation="relu" )%>%
+layer_dense(units = 1, activation="sigmoid")
+model %>% compile(
+loss = "binary_crossentropy",
+optimizer = optimizer_adam(learning_rate=0.0001) , metrics="AUC")
+model %>% fit(as.matrix(hcdsd_train_new),hcdsd_train_newlabels,batch_size=32,epochs = 20,verbose=2, validation_data=list(as.matrix(hcdsd_val_x),hcdsd_val_y),class_weight=list("0"=w_no, "1"=w_yes))
+```
+```{r}
+summary(model)
+```
+```{r}
+str(hcdsd_train_new)
+str(hcdsd_test)
+```
+
+
+```{r}
+library(caret)
+predicted_probs= model%>% predict(as.matrix(hcdsd_test[,-20]))
+predicted.labels= factor(ifelse(predicted_probs>0.5, "1", "0"))
+confusionMatrix(predicted.labels, as.factor(hcdsd_test[,20]), mode="everything", positive="1")
+```
+Plots of various models used in this project
+
+```{r}
+plot(lasso)
+```
+```{r}
+plot(ridge)
+```
+
+```{r}
+plot(enet)
+```
+
+```{r}
+plot(m_rf)
+```
+```{r}
+plot(gbm)
+```
+```{r}
+plot(svm_rad)
+```
+
+
+

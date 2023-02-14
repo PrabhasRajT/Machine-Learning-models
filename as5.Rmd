@@ -1,0 +1,400 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Section 1 : DATA CLEANING
+
+1)Take a summary of the data and explore the result. How many categorical and numerical variables are there in the dataset?
+
+```{r}
+house=read.csv("C:/Users/prabh/Downloads/dataset (1)/dataset/housing.csv")
+```
+
+```{r}
+house=house[-1]
+str(house)
+summary(house)
+```
+
+```{r}
+sapply(colnames(house), function(x) class(house[[x]]))
+```
+
+ans: 43 categorical and 37 numerical variables are there in the dataset.
+
+2)Which columns have missing values and what percentage of those columns have NAs? Is there any obvious outlier in the SalePrice? If so, remove them
+
+```{r}
+which(is.na(house))
+colSums(is.na(house))
+length(which(is.na(house)))
+```
+
+```{r}
+iqr123 <-IQR(house$SalePrice)
+iqr123
+summary(house$SalePrice)
+```
+
+```{r}
+left <- 129975-1.5*iqr123
+right<- 214000+1.5*iqr123
+left
+right
+x<-house$SalePrice
+x[x<left | x>right]
+length(which(x<left | x>right))
+```
+
+For those variables for which NA means not applicable, you can replace NA with zero ( if that variable is numeric) or replace it with a new category/level, for instance, "notApplicable" if that variable is categorical.
+
+```{r}
+house[is.na(house$Alley), "Alley"]= "not applicable"
+house[is.na(house$BsmtQual), "BsmtQual"]= "not applicable"
+house[is.na(house$BsmtCond), "BsmtCond"]= "not applicable"
+house[is.na(house$BsmtExposure), "BsmtExposure"]= "not applicable"
+house[is.na(house$BsmtFinType1), "BsmtFinType1"]= "not applicable"
+house[is.na(house$BsmtFinType2), "BsmtFinType2"]= "not applicable"
+house[is.na(house$FireplaceQu), "FireplaceQu"]= "not applicable"
+house[is.na(house$GarageType), "GarageType"]= "not applicable"
+house[is.na(house$GarageCond), "GarageCond"]= "not applicable"
+house[is.na(house$GarageFinish), "GarageFinish"]= "not applicable"
+house[is.na(house$GarageQual), "GarageQual"]= "not applicable"
+house[is.na(house$PoolQC), "PoolQC"]= "not applicable"
+house[is.na(house$Fence), "Fence"]= "not applicable"
+house[is.na(house$MiscFeature), "MiscFeature"]= "not applicable"
+```
+
+```{r}
+house[is.na(house$GarageYrBlt), "GarageYrBlt"]= 0
+```
+
+4)  After replacing not applicable NAs with appropriate values, find out which columns (if any) still have NAs and what percentage of each column is missing.
+
+```{r}
+colSums(is.na(house))
+length(which(is.na(house)))
+(colMeans(is.na(house)))*100
+```
+
+5)what percentage of rows in the dataset have one or more missing values?
+
+```{r}
+j1=complete.cases(house)
+tab= table(j1)
+prop.table(tab)
+```
+
+changing categorical into factor variables.
+
+```{r}
+library(dplyr)
+house = house %>%
+    mutate_if(is.character,as.factor)
+str(house)
+```
+
+section 2:Data Exploration
+
+plot the histogram of SalePrice. Interpret the histogram. Is SalePrice variable skewed?
+
+```{r}
+hist(house$SalePrice, main = "Histogram of the SalePrice")
+```
+
+ans:Histogram of SalePrice variable is Right-skewed, the tallest bar is at the left hand side of the diagram.
+
+draw scatter and side by side box plots of other variables against the Sale Price. From these plots, what variables seem to have correlation with SalePrice?
+
+```{r}
+plot(SalePrice~.,data=house)
+```
+ans:
+correlation with SalePrice
+Moderate correlation - LotFrontage,YearBuilt,YearRemodAdd,MasVnrArea,BsmtFinSF1,X2ndFlrSF,
+FullBath,TotRmsAbvGrd,Fireplaces,WoodDeckSF,OpenPorchSF,
+Strong correlation - OverallQual,TotalBsmtSF,X1stFlrSF,GrLivArea,GarageCars,GarageArea,
+
+
+Examine the columns with missing values to see if any of them are categorical. Use caret's createDataPartition method to partition the dataset to 80% training and 20% testing. If a categorical column has missing values in train or test data, impute it with the mode of that column in the training data. It is important that the mode is computed based only on the training data only (instead of the entire dataset) to avoid data leakage.
+
+```{r}
+library(caret)
+intrain= createDataPartition(house$SalePrice, p=0.8, list= FALSE)
+house_train= house[intrain,]
+
+house_test = house[-intrain,]
+```
+
+```{r}
+replaceNA= function(x){
+ 
+    t1 = table(x)
+    mode = names(which(t1==max(t1)))
+    x[is.na(x)]= mode
+     
+  return(x)
+}
+house_train$MasVnrType=replaceNA(house_train$MasVnrType)
+
+house_train$Electrical=replaceNA(house_train$Electrical)
+
+colSums(is.na(house_train))
+```
+
+```{r}
+mode= function(x){
+ 
+    t1 = table(x)
+    mode = names(which(t1==max(t1)))
+     
+  return(mode)
+}
+train_mode=mode(house_train$MasVnrType)
+
+house_test$MasVnrType[is.na(house_test$MasVnrType)]= train_mode
+
+train_mode1=mode(house_train$Electrical)
+house_test$Electrical[is.na(house_test$Electrical)]= train_mode1
+
+colSums(is.na(house_test))
+```
+
+SECTION 3:Creating Regularized Linear Regression Models
+
+Set.seed(1) and train a Lasso Linear Regression model using "glmnet" and "caret" as explained in the lectures to predict the SalePrice. Use 10 fold cross validation and Tune the lambda parameter)
+
+```{r}
+library(caret)
+library(RANN)
+set.seed(1)
+lasso <-train(
+SalePrice~., data = house_train, method = "glmnet",
+trControl= trainControl("cv", number = 10), na.action=na.pass, preProc="knnImpute",
+tuneGrid= expand.grid(alpha = 1, lambda = 10^seq(-3, 3, length = 100)))
+
+coef(lasso$finalModel, lasso$bestTune$lambda)
+
+predictions <-predict(lasso,house_test,na.action=na.pass)
+RMSE(predictions, house_test$SalePrice)
+```
+ans: Lasso shrink some of the coefficients to zero, which means those variable is not used for prediction.
+
+set.seed(1) again and train a Ridge linear regression model using 10 fold cross validation and tune lambda as you did for lasso and compute the RMSE of this model on the test data. Use knn imputation similar to what you did for lasso.
+
+```{r}
+set.seed(1)
+ridge <-train(
+SalePrice~., data = house_train, method = "glmnet",
+trControl= trainControl("cv", number = 10),na.action=na.pass, preProc="knnImpute",
+tuneGrid= expand.grid(alpha = 0, lambda = 10^seq(-3, 3, length = 100)))
+
+predictions1 <-predict(ridge,house_test,na.action=na.pass)
+RMSE(predictions1, house_test$SalePrice)
+```
+
+set.seed(1) again and train an Elastic net linear regression model using 10 fold cross validation and tune lambda as you did before and tune alpha to be a sequence of 10 values between 0 and 1, that is: 0,0.1,0.2,....1 . Compute the RMSE of the tuned model on the test data Use knn imputation similar to what you did for the two previous models.
+
+```{r}
+set.seed(1)
+enet<-train(
+SalePrice~., data = house_train, method = "glmnet",
+trControl= trainControl("cv", number = 10),na.action=na.pass, preProc="knnImpute",
+tuneGrid= expand.grid(alpha =seq(0,1, length=10), lambda = 10^seq(-3, 3, length = 100)))
+
+predictions2 <-predict(enet,house_test,na.action=na.pass)
+RMSE(predictions2, house_test$SalePrice)
+```
+
+Section 3.2 Creating Tree-Ensemble and SVM Models
+
+```{r}
+house_train
+```
+
+Set.seed(1) and Use Caret package with "rf" method to train a random forest model on the training data to predict the SalePrice. You can impute the missing values using knn similar to what you did for the previous models. Use 10-fold cross validation and let caret auto-tune the model. Use the model to predict the SalePrice for test data and compute RMSE.
+
+```{r}
+set.seed(1)
+library(caret)
+#grid_rf<-expand.grid(mtry= c(2, 4, 8, 16))
+m_rf<-train(SalePrice ~ ., data = house_train,na.action=na.pass, preProc=c("nzv","knnImpute"),importance=T, method = "rf", trControl= trainControl(method = "cv", number = 10))
+m_rf
+predictions3 =predict(m_rf, house_test, na.action=na.pass)
+RMSE(predictions3, house_test$SalePrice)
+```
+
+User caret's varImp function to get the variable importance for the random forest model. Which variables were most predictive in the random forest model?
+
+```{r}
+varImp(m_rf)
+```
+
+Set.seed(1) and Use Caret package with "gbm" method to train a Gradient Boosted Tree model on the training data. GBM needs minimum data preprocessing, you don't need to scale numeric features or encode the categorical variables. In addition, it can be trained directly on data with missing values without having to do imputation.
+
+```{r}
+set.seed(1)
+gbm<-train(
+SalePrice ~., data = house_train, method = "gbm",preProc="nzv",na.action=na.pass,
+trControl= trainControl("cv", number = 10))
+gbm
+gbm_predictions=predict(gbm, house_test, na.action=na.pass)
+RMSE(gbm_predictions, house_test$SalePrice)
+```
+
+Set.seed(1) and Use Caret package with "svmLinear" method to train a support vector machine model on the training data. Use preProc="knnImpute" to impute the missing values and scale data. Use 10 fold cross validation and let caret auto-tune the model, explain what is hyper-parameter "c"? Use the model to predict the SalePrice for the test data and compute RMSE.
+
+```{r}
+library(caret)
+svm<-train(
+SalePrice ~., data = house_train, method = "svmLinear",preProc="knnImpute",na.action=na.pass,
+trControl= trainControl("cv", number = 10))
+svm
+predictions4<-predict(svm,house_test,na.action=na.pass)
+RMSE(predictions4, house_test$SalePrice)
+```
+ans: Tuning parameter 'C' was held constant at a value of 1.  It determines the number and severity of the violations to the margin or to the hyper-plane that the classifier is willing to tolerate. As c=1(C>0), no more than C observations can be on the wrong side of the hyperplane.
+
+repeat the above steps but set train method to "svmRadial" to use radial basis function as kernel.
+
+```{r}
+library(caret)
+svm_rad<-train(
+SalePrice ~., data = house_train, method = "svmRadial",preProc="knnImpute",na.action=na.pass,
+trControl= trainControl("cv", number = 10))
+svm_rad
+predictions4_rad<-predict(svm_rad,house_test,na.action=na.pass)
+RMSE(predictions4_rad, house_test$SalePrice)
+```
+
+Use "resamples" method to compare the cross validation RMSE of the seven models you created above (LASSO, RIDGE, elastic net, randomforest, gbm, svmlinear, and svmradial). In a sentence or two, interpret the results.
+
+```{r}
+compare=resamples(list(L=lasso,R=ridge,E=enet,RF=m_rf,G=gbm,S=svm,SR=svm_rad))
+summary(compare)
+```
+ans:while comparing the average RMSE of of the seven models created above (LASSO, RIDGE, elastic net, randomforest, gbm, svmlinear, and svmradial), we can conclude that RandomForest, Gradient Boosted Tree models gives less RMSE.
+
+
+Split the training data to train--validation set. (use 90% for training and 10% for validation)
+
+```{r}
+intrain1= createDataPartition(house_train$SalePrice, p=0.9, list= FALSE)
+house_train_x= house_train[intrain1, -80]
+house_train_y= house_train[intrain1, 80]
+
+house_val_x= house_train[-intrain1, -80]
+house_val_y= house_train[-intrain1, 80]
+
+```
+
+Use knn imputation to impute the missing values in the train/validation/ and test data based on the training data.
+
+```{r}
+library("RANN")
+preproc <- preProcess(house_train_x, method="knnImpute") 
+train.imputed <- predict(preproc, house_train_x)
+test.imputed <- predict(preproc, house_test)
+val_imputed <- predict(preproc, house_val_x)
+```
+
+```{r}
+colSums(is.na(train.imputed))
+```
+
+Neural Networks cannot take factor variables and you must convert your categorical variables to numbers before training your neural network model.
+
+```{r}
+library(mltools)
+library(data.table)
+house_train1=as.data.frame(one_hot(as.data.table(train.imputed),dropUnusedLevels = FALSE))
+house_val1=as.data.frame(one_hot(as.data.table(val_imputed), dropUnusedLevels = FALSE))
+house_test1=as.data.frame(one_hot(as.data.table(test.imputed), dropUnusedLevels = FALSE))
+```
+
+
+```{r}
+n= names(house_test1)
+which(n=="SalePrice")
+```
+We take the logarithm of saleprice to scale it down and avoid error gradients to get too large during backpropagation.
+```{r}
+house_train_y= log(house_train_y)
+house_val_y= log(house_val_y)
+```
+Create a Neural Network model with at least two hidden layers to predict log(SalePrice). We take the logarithm of saleprice to scale it down and avoid error gradients to get too large during backpropagation. If gradients are too large, they can make the model unstable and you end up having NAN for training or validation loss.
+```{r}
+library(keras)
+model <-keras_model_sequential() %>%
+layer_dense(units = 50, activation = "relu",input_shape= dim(house_train1)[2]) %>%
+layer_dropout(0.5) %>%
+layer_dense(units = 50, activation = "relu") %>%
+layer_dropout(0.5) %>%
+layer_dense(units = 1)
+model
+```
+
+```{r}
+model%>% compile(loss = "mse",optimizer = "adam")
+model
+model%>% fit(as.matrix(house_train1),house_train_y,batch_size=50,epochs = 50, validation_data=list(as.matrix(house_val1),house_val_y), verbose=2)
+```
+
+```{r}
+library(tfruns)
+runs=tuning_run("house_hyperparameters.R",
+           flags=list(
+             learning_rate=c(0.1,0.01,0.001,0.0001),
+             batch_size=c(50,50,1),
+             dropout=c(0.2, 0.3, 0.5),
+             activation_function=c("relu","relu"),
+             units1=c(16,32,64,128),
+             units2=c(16,32,64,128)
+           ),
+           sample=0.01
+         )
+```
+
+```{r}
+runs
+```
+Use view_run to look at your best model. Note that the best model is the model with lowest validation loss. What hyper-parameter combination is used in your best model. Does your best model still overfit?
+```{r}
+view_run(runs$run_dir[11])
+```
+ans: hyper-parameter combination 
+batch_size=50,units1=32,units1=16,lr=0.01,dropout=0.2,lowest val_loss=0.0841
+my best model slightly overfit.
+
+
+```{r}
+house_train_new=rbind(house_train1, house_val1)
+house_train_labels= c(house_train_y,house_val_y)
+```
+
+```{r}
+library(keras)
+model <-keras_model_sequential() %>%
+layer_dense(units = 32, activation = "relu",input_shape= dim(house_train_new)[2]) %>%
+layer_dropout(0.2) %>%
+layer_dense(units =16, activation = "relu") %>%
+layer_dropout(0.2) %>%
+layer_dense(units = 1)
+
+model%>% compile(loss = "mse",optimizer =  optimizer_adam(learning_rate=0.01))
+model
+model%>% fit(as.matrix(house_train_new),house_train_labels,batch_size=50,epochs = 50, validation_data=list(as.matrix(house_val1),house_val_y), verbose=2)
+```
+Use your model above to predict the saleprice for the test data. Note that the predictions are in the log scale. Take exp of predictions to convert them back to the original scale and compute RMSE of the model on the test data in the original scale.
+```{r}
+predictions_house=model %>% predict(as.matrix(house_test1[,-303]))
+predictions_house=exp(predictions_house)
+rmse= function(x,y){
+return((mean((x -y)^2))^0.5)
+}
+rmse(predictions_house,house_test1$SalePrice)
+```
+
+while comparing all the models, we can conclude that RandomForest, Gradient Boosted Tree models gives less RMSE.
+

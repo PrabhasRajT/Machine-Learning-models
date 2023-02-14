@@ -1,0 +1,354 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Problem1: Predicting number of college applications
+1)Download the dataset college.csv and explore its overall structure. Get a summary statistics of each variable. Answer the following questions:
+• How many observations do you have in the data?
+• How many categorical and numeric variables you have in your data?
+• Is there any missing value?
+```{r}
+college = read.csv("C:/Users/prabh/Downloads/College.csv", stringsAsFactors = TRUE)
+str(college)
+summary(college)
+sapply(colnames(college), function(x) class(college[[x]]))
+which(is.na(college))
+colSums(is.na(college))
+```
+ans: There are 777 observations in the data
+     There are 2 categorical and 17 numeric variables in the data.
+     There are no missing values in the data.
+     
+2)Removing the first column (the name of the college)     
+```{r}
+college <- college[-1]
+str(college)
+```
+3)Which variables are associated with “Apps”? Use appropriate plots and statistics test to answer this question.
+```{r}
+attach(college)
+plot(Apps~Private)
+t.test(Apps~Private)
+plot(x = Apps, y = Accept)
+cor.test(Apps, Accept)
+plot(x = Apps, y = Enroll)
+cor.test(Apps, Enroll)
+plot(x = Apps, y = Top10perc)
+cor.test(Apps, Top10perc)
+plot(x = Apps, y = Top25perc)
+cor.test(Apps, Top25perc)
+plot(x = Apps, y = F.Undergrad)
+cor.test(Apps, F.Undergrad)
+plot(x = Apps, y = P.Undergrad)
+cor.test(Apps, P.Undergrad)
+plot(x = Apps, y = Outstate)
+cor.test(Apps, Outstate)
+plot(x = Apps, y = Room.Board)
+cor.test(Apps, Room.Board)
+plot(x = Apps, y = Books)
+cor.test(Apps, Books)
+plot(x = Apps, y = Personal)
+cor.test(Apps, Personal)
+plot(x = Apps, y = PhD)
+cor.test(Apps, PhD)
+plot(x = Apps, y = Terminal)
+cor.test(Apps, Terminal)
+plot(x = Apps, y = S.F.Ratio)
+cor.test(Apps, S.F.Ratio)
+plot(x = Apps, y = perc.alumni)
+cor.test(Apps, perc.alumni)
+plot(x = Apps, y = Expend)
+cor.test(Apps, Expend)
+plot(x = Apps, y = Grad.Rate)
+cor.test(Apps, Grad.Rate)
+```
+associated   - F.Undergrad, Enroll, Accept, Private, Grad.Rate, Expend, , P.Undergrad, Top10perc, Top25perc, Room.Board, Books, Personal, PhD, Terminal, S.F.Ratio
+
+not associated - Outstate, perc.alumni.
+The variables perc.alumni and Outstate are not associated with Apps variable as p-value is greater than 0.01 and also they have a very weak positive and negative correlation respectively.
+
+4)Remove variables not associated with “Apps”
+```{r}
+college <- college[c(-9,-16)]
+str(college)
+```
+
+
+
+5)plot the histogram of the number of applications “Apps” variable. Explain what the histogram shows?
+```{r}
+hist(college$Apps, main = "Histogram of the number of applications", xlab = "Apps")
+```
+ans: In this Histogram of the number of applications, The tallest bar is at the starting of the histogram covers the 0 to 5000 range and has a frequency of more than 600. Since the data frame includes 777 observations, we can conclude that more than 90% of the colleges received applications ranging in between 0 to 5000.
+
+6)Split the data into train and test
+```{r}
+college_train<-college[1:621, ]
+college_test<-college[622:777, ]
+```
+
+7)set the random seed
+```{r}
+set.seed(123)
+```
+
+8)Use caret package to run 10 fold cross validation using linear regression method on the train data . Print the resulting model to see the cross validation RMSE. In addition, take a summary of the model and interpret the coefficients. Which coefficients are statistically different from zero? What does this meant?
+
+9)Compute RMSE of the model on the test data. You can call “predict” function and pass to it the model (returned by caret train method) and the test data. Then compute RMSE of the predictions returned by the “predict” method.
+
+10) Set the random seed again. We need to do this before each training to ensure we get the same folds in cross validation. Set.seed(123) so we can compare the models using their cross validation RMSE.
+
+```{r}
+library(caret)
+tr.control1 = trainControl(method="cv", number = 10)
+
+college.lm=lm(Apps~.,data =college)
+summary(college.lm)
+
+set.seed(123)
+
+college.cv.lm=train(Apps~., method="lm", data=college_train, trControl=tr.control1)
+college.cv.lm
+summary(college.cv.lm)
+predictions= predict(college.cv.lm, college_test)
+
+rmse=function(predictions, truevalues)
+  return(sqrt(mean((predictions-truevalues)^2)))
+
+mae=function(predictions, truevalues)
+  return(mean(abs(predictions-truevalues)))
+
+mape=function(predictions, truevalues)
+  return(mean(abs(predictions-truevalues)/truevalues))
+
+print("rmse:")
+rmse(predictions, college_test$Apps)
+
+
+print("mae:")
+mae(predictions, college_test$Apps)
+
+
+print("mape:")
+mape(predictions, college_test$Apps)
+
+RMSE(predictions, college_test$Apps)
+```
+ans: The coefficients - PrivateYes, Accept, Enroll, Top10perc, Expend, Top25perc, F.Undergrad, S.F.Ratio, PhD are statistically different from zero.
+this conclusion means, there is a significant linear relationship between these variables and Apps.
+
+
+11)Use caret and leap packages to run a 10 fold cross validation using step wise linear regression method with backward selection on the train data. The train method by default uses maximum of 4 predictors and reports the best models with 1..4 predictors. We need to change this parameter to consider all predictors. So inside your train function, add the following parameter tuneGrid = data.frame(nvmax = 1:n), where n is the number of variables you use to predict “Apps” . Which model (with how many variables or nvmax ) has the lowest cross validation RMSE? Take the summary of the final model, which variables are selected in the model with the lowest RMSE?
+```{r}
+library(leaps)
+library(caret)
+train.control=trainControl(method = "cv", number = 10)
+step.model<-train(Apps~., data = college,method= "leapBackward",trControl= train.control, tuneGrid = data.frame(nvmax = 1:16))
+summary(step.model)
+print(step.model)
+```
+ans:The model with 6 variables or nvmax = 6  has the lowest cross validation RMSE of 1093.578
+The variables- Accept, Top10perc, Expend, PrivateYes, Enroll, PhD are selected in the model with the lowest RMSE
+
+
+12)Compute the RMSE of the stepwise model on the test data.
+```{r}
+predictions_n= predict(step.model, college_test)
+RMSE(predictions_n, college_test$Apps)
+```
+13)use “rpart” function to create a regression tree model from the train data. Get the predictions on test data and compute the RMSE.
+```{r}
+library(rpart)
+c.rpart<-rpart(Apps ~ ., data = college_train)
+p.c.rpart<-predict(c.rpart, college_test)
+sqrt(mean((college_test$Apps-p.c.rpart)^2))
+
+```
+14)Compare the RMSE on the test data for linear regression, stepwise regression, and the regression tree.
+
+ans:
+RMSE on the test data for linear regression= 1125.921
+RMSE on the test data for stepwise regression= 1086.565
+RMSE on the test data for regression tree= 1441.396
+
+The stepwise regression model has given the lowest RMSE(1086.565) on the test data among other two models.
+
+The regression tree model has given the highest RMSE(1441.396) on the test data among other two models.
+
+
+
+
+Problem2—Predicting Customer Churn using Logistic Regression and Decision Trees
+
+1)Load the dataset. Examine its structure and remove the first three variables (RowNumber,CustomerId, and Surname). These variables are unique for each sample hence, they are not useful for prediction. Convert all string variables to factors.
+```{r}
+cm = read.csv("C:/Users/prabh/Downloads/Churn_Modelling.csv", stringsAsFactors = TRUE)
+str(cm)
+summary(cm)
+which(is.na(cm))
+colSums(is.na(cm))
+```
+
+```{r}
+cm <- cm[-c(1,2,3)]
+str(cm)
+```
+2)Use appropriate plots and statistical tests to find which variables are associated with “Exited”. Remove variables not associated with “Exited”
+```{r}
+attach(cm)
+mytable1 <- table(Exited, Geography)
+mosaicplot(mytable1, ylab= "Geography", xlab="exited", main = "Mosaic graph of Exited vs Geography", shade=TRUE)
+chisq.test(mytable1)
+mytable2 <- table(Exited, Gender)
+mosaicplot(mytable2, ylab= "Gender", xlab="exited", main = "Mosaic graph of Exited vs Gender", shade=TRUE)
+chisq.test(mytable2)
+plot(CreditScore~Exited)
+t.test(CreditScore~Exited, alternative="two.sided")
+plot(Age~Exited)
+t.test(Age~Exited, alternative="two.sided")
+plot(Tenure~Exited)
+t.test(Tenure~Exited, alternative="two.sided")
+plot(Balance~Exited)
+t.test(Balance~Exited, alternative="two.sided")
+plot(NumOfProducts~Exited)
+t.test(NumOfProducts~Exited, alternative="two.sided")
+mytable3 <- table(Exited, HasCrCard)
+mosaicplot(mytable3, ylab= "HasCrCard", xlab="exited", main = "Mosaic graph of Exited vs HasCrCard", shade=TRUE)
+chisq.test(mytable3)
+mytable4 <- table(Exited, IsActiveMember)
+mosaicplot(mytable4, ylab= "IsActiveMember", xlab="exited", main = "Mosaic graph of Exited vs IsActiveMember", shade=TRUE)
+chisq.test(mytable4)
+plot(EstimatedSalary~Exited)
+t.test(EstimatedSalary~Exited, alternative="two.sided")
+```
+ans: geography, gender, CreditScore, Age, Balance, NumOfProducts, IsActiveMember are associated with "Exited" 
+
+removing variables not associated with Exited
+```{r}
+cm <- cm[-c(5,8,10)]
+str(cm)
+```
+
+3)Set the random seed, set.seed(123), and split the data to train/test. Use 80% of samples for training and the remaining 20% for testing
+```{r}
+library(caret)
+set.seed(123)
+train_indices1= createDataPartition(Exited, p=0.8, list=FALSE)
+cm_train= cm[train_indices1,]
+cm_test=cm[-train_indices1,]
+str(cm_train)
+str(cm_test)
+```
+
+4)Train a logistic regression model on the train data using the glm package and use it to predict “Exited” for the test data.
+```{r}
+cm_train$Exited=factor(cm_train$Exited)
+logistic_model= glm(Exited~., data = cm_train, family = "binomial")
+summary(logistic_model)
+```
+```{r}
+predictions= predict(logistic_model, cm_test, type="response")
+head(predictions)
+```
+5)the cross table between the predicted labels and true labels in the test data and compute total_error, false positive rate, and false negative rate.
+```{r}
+predicted.label = factor(ifelse(predictions>0.5, 1,0))
+actual.label= cm_test$Exited
+t=table(predicted.label, actual.label)
+t
+error=t(t[1,2]+t[2,1])/sum(t)
+error
+FPR = t[1,2]/(t[1,2]+t[1,1])
+FNR = t[2,1]/(t[2,1]+t[2,2])
+FPR
+FNR
+```
+error= 0.192
+FPR= 0.1712737
+FNR= 0.4387097
+
+6)down sampling
+```{r}
+cm_train1= cm_train[cm_train$Exited==0,]
+cm_train1
+```
+```{r}
+cm_train2= cm_train[cm_train$Exited==1,]
+cm_train2
+```
+```{r}
+train_sample<-sample(6366, 1634)
+cm_train3<-cm_train1[train_sample,]
+cm_train3
+```
+```{r}
+cm_train4<-rbind(cm_train3, cm_train2)
+cm_train4
+```
+
+```{r}
+logistic_model1= glm(Exited~., data = cm_train4, family = "binomial")
+summary(logistic_model1)
+predictions1= predict(logistic_model1, cm_test, type="response")
+head(predictions1)
+predicted.label1 = factor(ifelse(predictions1>0.5, 1,0))
+actual.label1= cm_test$Exited
+t1=table(predicted.label1, actual.label1)
+t1
+error1=t(t1[1,2]+t1[2,1])/sum(t1)
+error1
+FPR1 = t1[1,2]/(t1[1,2]+t1[1,1])
+FNR1 = t1[2,1]/(t1[2,1]+t1[2,2])
+FPR1
+FNR1
+```
+ans: The total error given by previous model before down sampling - 19.2%
+    The total error given by model after down sampling - 30.3%
+I think the previous model before down sampling does better at predicting exiting customers because it gave the low total error than other model.   
+
+
+7)Repeating steps 4,5,6 above by using a C5.0 decision tree model to predict “Exited”.
+Compare the logistic regression model with the boosted C5.0 model.
+```{r}
+library(C50)
+cm_train$Exited=factor(cm_train$Exited)
+cmc50 <-C5.0(cm_train[-8], cm_train$Exited, trials = 30)
+cmc50
+```
+
+```{r}
+library(gmodels)
+cm_pred10 <-predict(cmc50, cm_test)
+tab=CrossTable(cm_test$Exited, cm_pred10, prop.chisq= FALSE, prop.c= FALSE, prop.r= FALSE, dnn= c('actual default', 'predicted default'))
+tab
+error1=(64+198)/2000
+error1
+FPR2 = 64/(1533+64)
+FNR2 = 198/(198+205)
+FPR2
+FNR2
+```
+error= 0.131
+FPR= 0.04007514
+FNR= 0.4913151
+
+
+```{r}
+cm_train4$Exited=factor(cm_train4$Exited)
+cmc501 <-C5.0(cm_train4[-8], cm_train4$Exited, trials = 30)
+cmc501
+cm_pred101 <-predict(cmc501, cm_test)
+tab1=CrossTable(cm_test$Exited, cm_pred101, prop.chisq= FALSE, prop.c= FALSE, prop.r= FALSE, dnn= c('actual default', 'predicted default'))
+tab1
+error1=(328+104)/2000
+error1
+FPR2 = 328/(1269+328)
+FNR2 = 104/(104+299)
+FPR2
+FNR2
+```
+ans: The total error given by the boosted C5.0 model- 13.1%
+     The total error given by the logistic regression model before down sampling - 19.2%
+I think the boosted C5.0 model does better than the logistic regression model.

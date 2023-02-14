@@ -1,0 +1,355 @@
+---
+title: "ASSIGNMENT Exploratory Data Analysis with R Notebook"
+output: html_notebook
+NAME : PRABHAS RAJ GUPTA TADESETTI
+UIN : 676638594
+---
+Problem1—Exploring Vegas Hotel Dataset
+1)Exploring overall structure of the dataset usig str()
+```{r}
+hoteldata = read.csv("C:/Users/prabh/Desktop/LasVegasTripAdvisorReviews-Dataset (1).csv", sep=";", stringsAsFactors = TRUE)
+str(hoteldata)
+```
+2)does any of the variables have missing values? 
+ANS - Yes, some values are missing 
+```{r}
+#options(max.print = 1000000)
+is.na(hoteldata)
+length(which(is.na(hoteldata)))
+```
+
+```{r}
+which(is.na(hoteldata))
+```
+3)Histogram of score variable
+In the score histogram, the tallest bar is not at the center of the data, but on the right-hand side of the diagram. It includes more than 200 people who gave rating of 5.
+```{r}
+hist(hoteldata$Score, main="histogram of score variable", xlab = "score")
+```
+4)Mode of "score" variable in the dataset
+Ans : mode = 5
+```{r}
+table(hoteldata$Score)
+x <- hoteldata$Score
+temp <- table(as.vector(x))
+names(temp)[temp == max(temp)]
+```
+5)quantile function to get quantiles
+and 
+"median" value of 'score' variable
+```{r}
+quantile(x)
+summary(x)
+```
+6) ifelse function to create a factor variable “sentiment” which takes the value “positive” if score is 4 or 5 and “negative” otherwise. Summary of “sentiment” to make sure that the frequencies of “positive” and “negative” categories are consistent with the frequency of the values in Score
+```{r}
+hoteldata$sentiment =factor(c("positive", "negative"))
+myRange <- 1:length(hoteldata$Score)
+for(i in myRange) {
+  if (hoteldata$Score[i] > 3) {
+    hoteldata$sentiment[i] <- "positive"
+  } else {
+    hoteldata$sentiment[i] <- "negative"
+  }
+}
+hoteldata
+
+```
+
+
+```{r}
+str(hoteldata$sentiment)
+summary(hoteldata$sentiment)
+```
+7)
+Pool, Free internet and hotel.stars are associated with sentiment
+```{r}
+installed.packages("gmodels")
+library(gmodels)
+mytable<-table(hoteldata$sentiment, hoteldata$Pool)
+mytable
+chisq.test(mytable)
+mosaicplot(mytable, ylab="Pool", xlab = "sentiment", main = "Mosaic graph of sentiment vs pool")
+mytable1<-table(hoteldata$sentiment, hoteldata$Gym)
+mytable1
+chisq.test(mytable1)
+mosaicplot(mytable1, ylab="Gym", xlab = "sentiment", main = "Mosaic graph of sentiment vs gym")
+mytable2<-table(hoteldata$sentiment, hoteldata$Free.internet)
+mytable2
+chisq.test(mytable2)
+mosaicplot(mytable2, ylab="Free.internet", xlab = "sentiment", main = "Mosaic graph of sentiment vs free.internet")
+mytable3<-table(hoteldata$sentiment, hoteldata$Period.of.stay)
+mytable3
+chisq.test(mytable3)
+mosaicplot(mytable3, ylab="Period.of.stay", xlab = "sentiment", main = "Mosaic graph of sentiment vs period.of.stay")
+mytable4<-table(hoteldata$sentiment, hoteldata$Traveler.type)
+mytable4
+chisq.test(mytable4)
+mosaicplot(mytable4, ylab="Traveler.type", xlab = "sentiment", main = "Mosaic graph of sentiment vs Traveler.type")
+hstars = as.factor(hoteldata$Hotel.stars)
+boxplot(hoteldata$Hotel.stars, hoteldata$sentiment, col="green")
+t.test(hoteldata$Hotel.stars~hoteldata$sentiment, alternative="two.sided")
+```
+
+
+
+PROBLEM 2:Exploring California Housing Dataset
+1)structure of the dataset
+There are 9 numerical variables and 1 categorical variable 
+```{r}
+housingdata = read.csv("C:/Users/prabh/housing-1.csv", stringsAsFactors = FALSE)
+str(housingdata)
+```
+2)summary of dataset and does any of the variables has missing values?
+yes, missing values are there
+```{r}
+summary(housingdata)
+which(is.na(housingdata))
+length(which(is.na(housingdata)))
+```
+3)percentage of rows having missing values in one or more variables
+```{r}
+j1=complete.cases(housingdata)
+table_q = table(j1)
+prop.table(table_q)
+sum(!j1)
+```
+4)Removing the rows with missing values
+```{r}
+housingdata=na.omit(housingdata)
+```
+
+
+5)Histogram of the median_house_value
+histogram is positively skewed
+```{r}
+hist(housingdata$median_house_value, main="median house value in housing data", xlab="median house value")
+```
+boxplot of median_house_value
+```{r}
+boxplot(housingdata$median_house_value, main="Boxplot of median_house_value", ylab = "median_house_value")
+```
+5)answer: median_house_value sample is Positively skewed
+
+6)Q-Q plot to examine if the distribution of median_house_value is approximately normal
+```{r}
+qqnorm(housingdata$median_house_value)
+```
+6) distribution of median_house_value is not normal
+7)IQR method to find outliers of the median_house_value attribute. How many outliers does this attribute have?
+```{r}
+iqr123 <-IQR(housingdata$median_house_value)
+iqr123
+summary(housingdata$median_house_value)
+```
+```{r}
+options(max.print = 100000)
+left <- 119600-1.5*iqr123
+right<- 264725+1.5*iqr123
+left
+right
+x<-housingdata$median_house_value
+x[x<left | x>right]
+length(which(x<left | x>right))
+```
+no.of outliers = 1071
+
+8)Does any of the numerical attributes have a positive/negative linear correlation with median_house_value
+
+Ans:  median_income have a positive linear correlation with median_house_value
+```{r}
+numeric_attributes=housingdata[,c("longitude", "latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income", "median_house_value")]
+cor(numeric_attributes)
+```
+```{r}
+plot(numeric_attributes)
+```
+9)mean of meadian_house_valueacross different levels of ocean_proximity
+```{r}
+boxplot(housingdata$median_house_value~housingdata$ocean_proximity)
+y1=table(housingdata$median_house_value, housingdata$ocean_proximity)
+t.test(y1)
+```
+we can conclude that there is a statistically significant difference between the means of the median_house_value for each level of the ocean_proximity.
+
+
+10)ifelse function to create a new factor variable “Is_Inland” which takes the value “Yes” if the ocean_proximity is “Inland” and No” otherwise.
+```{r}
+myRange2 <- 1:length(housingdata$ocean_proximity)
+for(i in myRange2) {
+  if (housingdata$ocean_proximity[i] == "INLAND") {
+    housingdata$Is_Inland[i] <- "Yes"
+  } else {
+    housingdata$Is_Inland[i] <- "No"
+  }
+}
+housingdata
+```
+11)side by side box plot to visualize the relationship between “Is_Inland” and “median_house_value”. Is there a significant difference between the means of median_house_value for Inland vs not Inland houses
+```{r}
+median_house_value1 = factor(housingdata$median_house_value)
+is_inland1 = factor(housingdata$Is_Inland)
+boxplot(median_house_value1~is_inland1)
+str(housingdata)
+```
+```{r}
+t.test(housingdata$median_house_value~housingdata$Is_Inland, alternative = "two.sided")
+```
+ans:  we can conclude that there is a statistically significant difference between the means of the median_house_value for each level of the Is_Inland
+
+
+Problem3- Exploring the Heart Disease Dataset
+1)opening the files and examining the data in them
+```{r}
+pcd <-read.csv("C:/Users/prabh/processed.cleveland.data.csv", na.string="?", stringsAsFactors = TRUE)
+str(pcd)
+```
+```{r}
+phd <- read.csv("C:/Users/prabh/processed.hungarian.data.csv", na.string="?", stringsAsFactors = TRUE)
+str(phd)
+```
+```{r}
+psd <- read.csv("C:/Users/prabh/processed.switzerland.data.csv", na.string="?", stringsAsFactors = TRUE)
+str(psd)
+```
+```{r}
+pvd <- read.csv("C:/Users/prabh/processed.va.data.csv", na.string="?", stringsAsFactors = TRUE)
+str(pvd)
+```
+2)Using rbind function to combine the four dataframes into one dataframe and manually setting the column names using colnames function
+
+installing "plyr" package for rbind function
+```{r}
+install.packages("plyr")
+library(plyr)
+```
+```{r}
+allinone <- rbind.fill(pcd,phd,psd,pvd)
+colnames(allinone) <- c("age","sex","cp","trestbps","chol","fbs","restecg","thalach","exang","oldpeak","slope","ca","thal","num")
+allinone
+
+```
+3)structure of dataframe
+```{r}
+str(allinone)
+```
+```{r}
+percentage = mean(is.na(allinone)) * 100
+percentage
+```
+4)categorical variables are converted into factor variables
+```{r}
+allinone$sex = factor(allinone$sex)
+allinone$restecg = factor(allinone$restecg)
+allinone$exang = factor(allinone$exang)
+allinone$thal = factor(allinone$thal)
+str(allinone)
+
+```
+
+5)median and mode of age attribute
+```{r}
+summary(allinone$age)
+temp <- table(as.vector(allinone$age))
+names(temp)[temp == max(temp)]
+```
+
+6)
+```{r}
+plot(allinone$sex)
+```
+yes,female patients are under-represented compared to male patients in this dataset
+
+7)
+```{r}
+rangeofnum<- 1:length(allinone$num)
+for(i in rangeofnum){
+if(allinone$num[i] == 0){
+allinone$diagnosis[i] = "NO"
+}else {
+allinone$diagnosis[i] = "YES"
+}
+}
+allinone$diagnosis <- factor(allinone$diagnosis)
+allinone$diagnosis
+str(allinone)
+allinone
+```
+
+```{r}
+str(allinone$diagnosis)
+```
+```{r}
+allinone
+```
+```{r}
+#age VS diagnosis
+boxplot(allinone$age~allinone$diagnosis)
+t.test(age~diagnosis, data= allinone)
+
+
+#sex VS diagnosis
+table_a <- table(allinone$diagnosis,allinone$sex)
+table_a
+mosaicplot(table_a, ylab = "sex", xlab = "diagnosis", main = "Mosaic plot of sex vs diagnosis", shade = TRUE)
+chisq.test(table_a)
+
+
+#cp VS diagnosis
+table_b <- table(allinone$diagnosis,allinone$cp)
+table_b
+mosaicplot(table_b, ylab = "cp", xlab = "diagnosis", main = "Mosaic plot of cp  vs diagnosis", shade = TRUE)
+chisq.test(table_b)
+
+#trestbps VS diagnosis
+boxplot(allinone$trestbps~allinone$diagnosis)
+t.test(allinone$diagnosis~allinone$trestbps, alternative = "two.sided")
+
+#chol VS diagnosis
+boxplot(allinone$chol~allinone$diagnosis)
+t.test(allinone$diagnosis~allinone$chol, alternative = "two.sided")
+
+#fbs VS diagnosis
+boxplot(allinone$fbs~allinone$diagnosis)
+t.test(allinone$diagnosis~allinone$fbs, alternative = "two.sided")
+
+#restecg VS diagnosis
+table_c <- table(allinone$restecg,allinone$diagnosis)
+table_c
+mosaicplot(table_c, ylab = "diagnosis", xlab = "restecg", main = "Mosaic plot of restecg vs diagnosis", shade = TRUE)
+chisq.test(table_c)
+
+
+#thalach VS diagnosis
+boxplot(allinone$thalach~allinone$diagnosis)
+t.test(allinone$diagnosis~allinone$thalach, alternative = "two.sided")
+
+
+#exang VS diagnosis
+table_d <- table(allinone$diagnosis, allinone$exang)
+table_d
+mosaicplot(table_d, ylab = "exang", xlab = "diagnosis", main = "Mosaic plot of exang vs diagnosis", shade = TRUE)
+chisq.test(table_d)
+
+#oldpeak VS diagnosis
+boxplot(allinone$oldpeak~allinone$diagnosis)
+t.test(allinone$diagnosis~allinone$oldpeak, alternative = "two.sided")
+
+#slope VS diagnosis
+boxplot(allinone$slope~allinone$diagnosis)
+t.test(allinone$diagnosis~allinone$slope, alternative = "two.sided")
+
+#diagnosis VS ca
+table_e <- table(allinone$diagnosis,allinone$ca)
+table_e
+mosaicplot(table_e, ylab = "ca", xlab = "diagnosis", main = "Mosaic plot of diagnosis vs ca", shade = TRUE)
+chisq.test(table_e)
+#diagnosis VS thal
+table_f <- table(allinone$diagnosis,allinone$thal)
+table_f
+mosaicplot(table_e, ylab = "thal", xlab = "diagnosis", main = "Mosaic plot of diagnosis vs thal", shade = TRUE)
+chisq.test(table_e)
+```
+ANS:
+variables "chol", "cp", "ca"(approx) are associated to "diagnosis" variable 
+

@@ -1,0 +1,427 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+Problem 1:Applying k-Nearest Neighbors to predict income
+
+1)Exploring the dataset from data.csv file
+```{r}
+rad<- read.csv("C:/Users/prabh/adult.data.csv",header = FALSE, strip.white=TRUE, na.strings="?")
+colnames(rad) <- c("age","workclass","fnlwgt","education","education_num","marital_status","occupation","relationship","race","sex","capital_gain","capital_loss","hours_per_week","native_country", "income")
+rad
+```
+2)structure of the data, summary of the data
+Categorical and numerical values of the data
+any missing values?
+```{r}
+str(rad)
+summary(rad)
+sapply(colnames(rad), function(x) class(rad[[x]]))
+which(is.na(rad))
+length(which(is.na(rad)))
+```
+ans: There are 9 categorical values and 6 numerical values. There are 4262 missing values in the dataset
+
+3)frequency table of the “income” variable to see how many observations you have in each category of the income variable
+```{r}
+table(rad$income)
+```
+There are 24720 observations with income <=50k and 7841 observations with >50k
+the data is not balanced. we do not have equal number of samples in each class of income.
+
+4)Exploring the data in order to investigate the association between income and the other features.
+```{r}
+library(gmodels)
+#rad$income = as.factor(rad$income)
+boxplot(rad$age~rad$income)
+CrossTable(rad$workclass, rad$income, chisq=TRUE)
+t.test(rad$age~rad$income, alternative="two.sided")
+boxplot(rad$fnlwgt~rad$income)
+CrossTable(rad$education, rad$income, chisq=TRUE)
+t.test(rad$fnlwgt~rad$income, alternative="two.sided")
+boxplot(rad$education_num~rad$income)
+t.test(rad$education_num~rad$income, alternative="two.sided")
+CrossTable(rad$marital_status, rad$income, chisq=TRUE)
+CrossTable(rad$occupation, rad$income, chisq=TRUE)
+CrossTable(rad$relationship, rad$income, chisq=TRUE)
+CrossTable(rad$race, rad$income, chisq=TRUE)
+CrossTable(rad$sex, rad$income, chisq=TRUE)
+boxplot(rad$capital_gain~rad$income)
+t.test(rad$capital_gain~rad$income, alternative="two.sided")
+boxplot(rad$capital_loss~rad$income)
+t.test(rad$capital_loss~rad$income, alternative="two.sided")
+boxplot(rad$hours_per_week~rad$income)
+t.test(rad$hours_per_week~rad$income, alternative="two.sided")
+CrossTable(rad$native_country, rad$income, chisq=TRUE)
+```
+ans:
+associated - workclass, education, occupation, hours_per_week
+
+5) Change all the “?” characters in the dataframe to NA
+```{r}
+replace(rad, "?", NA)
+```
+6)Which columns have missing values?
+```{r}
+colSums(is.na(rad))
+```
+7)data imputation
+
+```{r}
+replaceNA= function(x){
+  if(is.integer(x))
+    x[is.na(x)]= mean(x, na.rm = TRUE)
+  else{
+    t1 = table(x)
+    mode = names(which(t1==max(t1)))
+    x[is.na(x)]= mode
+    
+  }
+  return(x)
+}
+rad_as=sapply(rad, replaceNA)
+rad_as
+rad_as=as.data.frame(rad_as)
+str(rad_as)
+
+colSums(is.na(rad_as))
+```
+
+8)Set the seed of the random number generator to a fixed integer, say 1
+```{r}
+set.seed(1)
+```
+
+9)Randomize the order of the rows in the dataset
+```{r}
+set.seed(1)
+rad = rad[sample(nrow(rad_as), replace=FALSE), ]
+#rad
+```
+10)setting variables back to the integer 
+```{r}
+#install.packages("mltools")
+library(mltools)
+library(data.table)
+rad_as$age=as.integer(rad_as$age)
+rad_as$fnlwgt=as.integer(rad_as$fnlwgt)
+rad_as$education_num=as.integer(rad_as$education_num)
+rad_as$capital_gain=as.integer(rad_as$capital_gain)
+rad_as$capital_loss=as.integer(rad_as$capital_loss)
+rad_as$hours_per_week=as.integer(rad_as$hours_per_week)
+str(rad_as)
+as.data.table(rad_as)
+#rad_as=as.data.frame(rad_as)
+
+```
+one-hot-encoding of all unordered categorical variables
+```{r}
+library(caret)
+
+#rad_d1 = select(rad,workclass,education,marital_status,occupation,relationship,race,sex,native_country)
+#class(rad_d1)
+
+
+rad_as$workclass= as.factor(rad_as$workclass)
+rad_as$education= as.factor(rad_as$education)
+rad_as$marital_status= as.factor(rad_as$marital_status)
+rad_as$occupation= as.factor(rad_as$occupation)
+rad_as$relationship= as.factor(rad_as$relationship)
+rad_as$race= as.factor(rad_as$race)
+rad_as$sex= as.factor(rad_as$sex)
+rad_as$native_country= as.factor(rad_as$native_country)
+
+rad_d1 = as.data.frame(rad_as[,c("workclass","education","marital_status","occupation","relationship","race","sex","native_country")])
+
+
+rad_d1 =as.data.table(rad_d1)
+rad_d1
+str(rad_d1)
+rad_d1OneHotEncoded=one_hot(rad_d1, sparsifyNAs= TRUE, naCols= TRUE, dropCols= TRUE, dropUnusedLevels=TRUE)
+rad_d1OneHotEncoded=as.data.frame(rad_d1OneHotEncoded)
+```
+
+```{r}
+rad$income = as.factor(rad$income)
+```
+11)Scaling all numeric features using Min-Max scaling
+```{r}
+str(rad$income)
+
+rad_n112 = as.data.frame(rad[c("age","fnlwgt","education_num","capital_gain","capital_loss","hours_per_week")])
+str(rad_n112)
+normalize <- function(x) {
+ return ((x - min(x)) / (max(x) - min(x)))
+}
+
+rad_n112 = as.data.frame(lapply(rad_n112, normalize))
+rad_n112
+```
+```{r}
+rad_new1= cbind(rad_d1OneHotEncoded, rad_n112)
+rad_new1
+```
+
+splitting datasets into train and test
+```{r}
+rad_train<-rad_new1[1:25000, ] 
+rad_test<-rad_new1[25001:32561, ]
+
+rad_train_labels<-rad[1:25000, 15]
+rad_test_labels<-rad[25001:32561, 15]
+```
+
+```{r}
+library(caret)
+```
+
+```{r}
+#rad_test_pred
+```
+
+
+
+```{r}
+library(class)
+folds1=createFolds(rad$income,k=5)
+str(folds1)
+```
+
+
+
+```{r}
+knn_fold=function(features,target,fold,k){
+train=features[fold,]
+validation=features[fold,]
+train_labels=target[fold]
+validation_labels=target[fold]
+validation_preds=knn(train,validation,train_labels,k=k)
+t= table(validation_labels,validation_preds)
+#FPR=t[1,2]/(t[1,2]+t[1,1])
+#FNR=t[2,1]/(t[2,1]+t[2,2])
+#return (c("FPR"=FPR,"FNR"=FNR))
+error=(t[1,2]+t[2,1])/(t[1,1]+t[1,2]+t[2,1]+t[2,2])
+return(error)
+}
+```
+
+```{r}
+crossValidationError=function(features,target,k){
+folds=createFolds(target,k=5)
+errors=sapply(folds,knn_fold,features=features,
+target=target,k=k)
+return(mean(errors))
+#return(rowMeans(errors))
+}
+```
+```{r}
+rad_test_pred<-knn(train = rad_train, test = rad_test,cl=rad_train_labels ,k = 21)
+
+```
+
+
+12)5-fold cross validation with KNN to predict the “income” variable and report the cross- validation error.
+```{r}
+error=knn_fold(rad_new1[], rad$income,folds1$Fold1, k=20)
+error
+```
+
+
+```{r}
+cvb=crossValidationError(rad_new1, rad$income, k=5)
+cvb
+```
+```{r}
+rad_z<-as.data.frame(scale(rad_new1))
+crossValidationError(rad_z,rad$income,5)
+```
+13)tuning K
+```{r}
+ks=c(1,5,10,40,100,180)
+errors=sapply(ks,crossValidationError, features=rad_new1,target=rad$income)
+errors
+```
+```{r}
+plot(errors~ks, main="Cross validation Error", xlab="k", ylab="CVError")
+lines(errors~ks)
+```
+```{r}
+errors=crossValidationError(features=rbind(rad_train,rad_test),
+target=rad$income, k=5)
+errors
+```
+14)5-fold cross validation with KNN to predict the income variable and report the average false positive rate (FPR) and false negative rate (FNR) of the classifier. . FPR is the proportion of negative instances classified as positive by the classifier. Similarly, FNR is the proportion of positive instances classified as negative by the classifier
+```{r}
+knn_fold=function(features,target,fold,k){
+train=features[-fold,]
+validation=features[fold,]
+train_labels=target[-fold]
+validation_labels=target[fold]
+validation_preds=knn(train,validation,train_labels,k=k)
+t= table(validation_labels,validation_preds)
+FPR = t[1,2]/(t[1,2]+t[1,1])
+FNR = t[2,1]/(t[2,1]+t[2,2])
+return(c("FPR"=FPR,"FNR"=FNR))
+}
+
+FPR = knn_fold(rad_new1[], rad$income,folds$Fold1, k=20)
+FNR = knn_fold(rad_new1[], rad$income,folds$Fold1, k=20)
+
+
+crossValidationError=function(features,target,k,n_folds){
+folds=createFolds(target,k= n_folds)
+errors=sapply(folds,knn_fold,features=features,
+target=target,k=n_folds)
+return(rowMeans(errors))
+}
+
+errors = crossValidationError(rad_new1[], rad$income,n_folds =5)
+print(errors)
+t=table( rad_test_pred, rad_test_labels )
+t
+FPR= 124/(5631+124)
+FNR= 206/(1600+206)
+FPR
+FNR
+```
+
+```{r}
+total_error= (t[1,2]+t[2,1])/sum(t)
+total_error
+```
+
+15)what would be the training error of this classifier?
+
+ans: 0.24080956
+
+16)what is the False Positive Rate and False Negative Rate of the majority classifier and how does it compare to the average FPR and FNR of KNN classifier you computed in question 10.
+
+ans: 
+average FPR and FNR of KNN classifier computed in question 10 is giving me the better results than majority classifier.
+
+
+
+
+
+
+
+
+
+
+
+Problem 2: Applying Naïve Bayes classifier to sentiment classification of COVID tweets
+
+1)Reading the data and storing in in the dataframe and str() function
+```{r}
+cnt=read.csv("C:/Users/prabh/Downloads/Corona_NLP_train.csv")
+str(cnt)
+```
+
+```{r}
+t1=table(cnt$Sentiment)
+t1
+```
+2)Randomizing the order of the rows
+```{r}
+cnt = cnt[sample(nrow(cnt), replace=FALSE), ]
+cnt
+```
+3)Converting sentiment into a factor variable with three levels
+and summary() of sentiment
+```{r}
+cnt$Sentiment=factor(cnt$Sentiment)
+levels(cnt$Sentiment)
+```
+
+```{r}
+levels(cnt$Sentiment)<-list(Positive = "Extremely Positive", Negative = "Extremely Negative", neutral = "Neutral")
+levels(cnt$Sentiment)
+summary(cnt$Sentiment)
+```
+
+```{r}
+summary(cnt)
+```
+4)a text corpus from OriginalTweet variable. Then, cleaning the corpus, that is convert all tweets to lowercase, stem and remove stop words, punctuations, and additional white spaces.
+```{r}
+library(tm)
+covid_corpus<-VCorpus(VectorSource(cnt$OriginalTweet))
+print(covid_corpus)
+```
+
+
+```{r}
+covid_corpus_clean<-tm_map(covid_corpus_clean,
+removeWords, stopwords())
+library(SnowballC)
+covid_corpus_clean <- tm_map(covid_corpus_clean, stemDocument)
+covid_corpus_clean<-tm_map(covid_corpus,
+content_transformer(tolower))
+covid_corpus_clean<-tm_map(covid_corpus_clean, removePunctuation)
+covid_corpus_clean<-tm_map(covid_corpus_clean, stripWhitespace)
+```
+5)Creating separate wordclouds for “positive” and “negative” tweets. Is there any visible difference between the frequent words in “positive” vs “negative” tweets?
+
+ans:  yes, there is difference  between the frequent words in “positive” vs “negative” tweets
+```{r}
+library(wordcloud)
+#wordcloud(covid_corpus_clean,  min.freq= 50,  random.order=  FALSE)
+positive <-subset(cnt, Sentiment == "Positive")
+negative <-subset(cnt, Sentiment == "Negative")
+wordcloud(positive$OriginalTweet, max.words= 100, scale = c(3, 0.5))
+wordcloud(negative$OriginalTweet, max.words= 100, scale = c(3, 0.5))
+```
+6)a document-term matrix from the cleaned corpus. Then splitting the data into train and test sets.
+```{r}
+covid_dtm<-DocumentTermMatrix(covid_corpus_clean)
+covid_dtm_train<-covid_dtm[1:32925, ]
+covid_dtm_test<-covid_dtm[32926:41157, ]
+covid_dtm_train
+covid_dtm_test
+```
+
+```{r}
+covid_train_labels<-cnt[1:32925, ]$Sentiment
+covid_test_labels<-cnt[32926:41157, ]$Sentiment
+summary(covid_test_labels)
+```
+
+7)Removing the words that appear less than 100 times in the training data. Convert frequencies in the document-term matrix to binary yes/no features
+
+finding frequent words
+```{r}
+covid_freq_words<-findFreqTerms(covid_dtm_train,100)
+covid_dtm_freq_train<-covid_dtm_train[ , covid_freq_words]
+covid_dtm_freq_test<-covid_dtm_test[ , covid_freq_words]
+```
+
+```{r}
+convert_counts<-function(x) {
+ x <-ifelse(x > 0, "Yes", "No")
+}
+covid_train<-apply(covid_dtm_freq_train, MARGIN = 2, convert_counts)
+covid_test<-apply(covid_dtm_freq_test, MARGIN = 2, convert_counts)
+```
+8)a Naïve Bayes classifier on the training data and evaluate its performance on the test data.
+```{r}
+library(e1071)
+covid_classifier<-naiveBayes(covid_train, covid_train_labels)
+```
+
+```{r}
+covid_test_pred<-predict(covid_classifier, covid_test)
+```
+
+```{r}
+library(gmodels)
+CrossTable(covid_test_pred, covid_test_labels, prop.chisq= FALSE, prop.t = FALSE,
+dnn= c('predicted', 'actual'))
+```
+ans:
+the accuracy of the model is 0.63824101
+The accuracy in each category 
+Positive- 2335/3576 - 0.65296421
+Negative- 1860/3059 - 0.60804184
+neutral- 1059/1597 - 0.66311835.

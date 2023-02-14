@@ -1,0 +1,453 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Problem1— Using ANN for Covid Sentiment classification
+1)First use “qdap” package to remove stop words and do stemming
+```{r}
+cnt123=read.csv("C:/Users/prabh/Downloads/Corona_NLP_train.csv")
+str(cnt123)
+```
+
+```{r}
+str(cnt123$Sentiment)
+```
+
+```{r}
+library(qdap)
+cnt123$OriginalTweet=rm_stopwords(cnt123$OriginalTweet, stopwords=tm::stopwords("english"), separate=FALSE, strip=TRUE)
+cnt123$OriginalTweet=stemmer(cnt123$OriginalTweet, warn=FALSE)
+```
+2)Randomize the order of rows
+```{r}
+set.seed(123)
+cnt123 = cnt123[sample(nrow(cnt123), replace=FALSE), ]
+cnt123
+```
+3)Convert sentiment into a factor variable with three levels: “positive, “neutral”, and “negative”. Then convert this factor variable to a numeric vector.
+```{r}
+cnt123$Sentiment=factor(cnt123$Sentiment)
+levels(cnt123$Sentiment)
+levels(cnt123$Sentiment)<-list(Positive = "Extremely Positive", Negative = "Extremely Negative", neutral = "Neutral")
+levels(cnt123$Sentiment)
+summary(as.factor(cnt123$Sentiment))
+cnt123$Sentiment =as.numeric(cnt123[,"Sentiment"])-1
+```
+```{r}
+str(cnt123$Sentiment)
+```
+
+4)Spit the data three ways in to train/validation/ and test sets as follows: use the first 26340 rows for training, next 6585 rows for validation, and the last 8232 rows for testing.
+```{r}
+cnt123_train<-cnt123[1:26340,-6]
+cnt123_validation<-cnt123[26341:32925,-6 ]
+cnt123_test<-cnt123[32926:41157, -6]
+
+
+cnt123_train_labels<-cnt123[1:26340,6]
+cnt123_validation_labels<-cnt123[26341:32925,6]
+cnt123_test_labels<-cnt123[32926:41157,6]
+```
+5)Keras has a preprocessing layer, called layer_text_vectorization, this layer creates a document-term matrix where rows represent tweets and columns represent terms. Use the following code segment to create document-term matrix for your training, validation and test datasets you created above.
+```{r}
+library(keras)
+text_vectorizer <- layer_text_vectorization(output_mode="tf_idf", ngrams =2, max_tokens = 5000)
+text_vectorizer %>% adapt(cnt123_train$OriginalTweet)
+cnt123_train_dtm = text_vectorizer(cnt123_train$OriginalTweet)
+cnt123_validation_dtm =text_vectorizer(cnt123_validation$OriginalTweet)
+cnt123_test_dtm = text_vectorizer(cnt123_test$OriginalTweet)
+```
+
+
+Training, Tuning, and Evaluating a Neural Network Model
+Q1.
+```{r}
+model <-keras_model_sequential() %>%
+layer_dense(units = 64, activation = "relu", input_shape= dim(cnt123_train_dtm)[2]) %>%
+layer_dense(units = 64,activation="relu" ) %>%
+layer_dense(units = 3, activation="softmax")
+
+model
+```
+
+```{r}
+model %>% compile(loss = "sparse_categorical_crossentropy", optimizer = "adam", metric = c("accuracy"))
+model %>% fit(cnt123_train_dtm, cnt123_train_labels, epoch= 20,
+batch_size=50, validation_data=list(cnt123_validation_dtm, cnt123_validation_labels))
+```
+
+
+```{r}
+predicted_labels=as.numeric(model %>% predict(cnt123_test_dtm) %>%k_argmax())
+```
+
+```{r}
+actual_labels= cnt123_test_labels
+t=table(predicted_labels, actual_labels)
+t
+```
+ans: 2637-Positive observations, 2362-Negative observations, 931-neutral observations has been predicted correctly. Mostly the data is predicted correctly. 751 observations are predicted wrongly as "Positive" whereas 901 observations are wrongly predicted as "negative".
+
+2)
+
+```{r}
+library(tfruns)
+runs=tuning_run("cnt123_hyperparameters.R",
+            flags = list(
+              learning_rate = c(0.1, 0.01, 0.001, 0.0001),
+              batch_size = c(64,64,3),
+              activation_function = c("relu","softmax","tanh"),
+              units1= c(16,32,64,128),
+              units2= c(16,32,64,128)
+            ),
+            sample = 0.01 
+ )
+
+```
+
+```{r}
+runs=runs[order(runs$metric_val_accuracy, decreasing=TRUE),]
+runs
+```
+```{r}
+library(tfruns)
+view_run(runs$run_dir[1])
+```
+ans: We see that the validation_loss is always greater than the training loss, this means that network is overfitting the training data.
+We see that after about 7 epochs the validation loss does not decrease anymore while the training loss still continue to decrease.
+
+3)
+```{r}
+cnt123_train_new=as.matrix(cnt123_train_dtm)
+cnt123_validation_new=as.matrix(cnt123_validation_dtm)
+cnt123_newdata=rbind(cnt123_train_new, cnt123_validation_new)
+cnt123_newdata_labels=c(cnt123_train_labels, cnt123_validation_labels)
+```
+
+
+```{r}
+library(keras)
+model <-keras_model_sequential() %>%
+layer_dense(units = 16, activation = "softmax", input_shape= dim(cnt123_newdata)[2]) %>%
+layer_dense(units = 16,activation="softmax" ) %>%
+layer_dense(units = 3, activation="softmax")
+
+model %>% compile(loss = "sparse_categorical_crossentropy", optimizer = optimizer_adam(learning_rate=0.001), metric = c("accuracy"))
+model %>% fit(cnt123_newdata, cnt123_newdata_labels, epoch= 20,
+batch_size=64, validation_data=list(as.matrix(cnt123_validation_dtm), cnt123_validation_labels))
+```
+
+3)Evaluating the best model on the test data
+```{r}
+model %>% evaluate(as.matrix(cnt123_test_dtm), cnt123_test_labels)
+```
+
+ans:
+The accuracy of naïve Bayes model in assignment 2= 0.63824101
+The accuracy of ANN model in assignment 4= 0.7616618
+this model performs better when compared to  naïve Bayes model in assignment 2.
+
+
+
+
+Problem2—Predicting Baseball players’ salaries
+
+1)Download the dataset hitters.csv and explore the overall structure of the dataset using the str() function. Get a summary statistics of each variable. Answer the following questions:
+o How many observations do you have in the data?
+o How many categorical and numeric variables you have in your data?
+o Is there any missing value?
+
+```{r}
+hittersdata = read.csv("C:/Users/prabh/Downloads/hitters.csv", stringsAsFactors = TRUE)
+str(hittersdata)
+summary(hittersdata)
+sapply(colnames(hittersdata), function(x) class(hittersdata[[x]]))
+which(is.na(hittersdata))
+colSums(is.na(hittersdata))
+```
+ans: we have 322 observations of 20 variables in the data.
+     we have 3 categorical variables and 17 numeric variables in the data.
+     Yes, there are 59 NA values in the Salary variable.
+
+o Draw the histogram of salary. Interpret what you see in the histogram.
+```{r}
+hist(hittersdata$Salary, main = "Histogram of the Salary")
+```
+ans: Histogram of salary variable is Right_skewed, the tallest bar is at the left hand side of the diagram. Maximum members in the data are receiving salaries between 0-1000.
+
+
+2)remove the observation for which Salary value is missing
+```{r}
+hittersdata=na.omit(hittersdata)
+str(hittersdata)
+```
+3)Which predictors have most correlation with Salary? Use scattered plot, side-by-side box plots, t-test and correlation matrix to answer this question.
+```{r}
+attach(hittersdata)
+plot(x = hittersdata$Salary , y = hittersdata$AtBat, main = "Scatterplot of Salary vs. AtBat")
+cor.test(Salary, AtBat)
+plot(x = hittersdata$Salary , y = hittersdata$Hits, main = "Scatterplot of Salary vs. Hits")
+cor.test(Salary, Hits)
+plot(x = hittersdata$Salary , y = hittersdata$HmRun, main = "Scatterplot of Salary vs. HmRun")
+cor.test(Salary, HmRun)
+plot(x = hittersdata$Salary , y = hittersdata$Runs, main = "Scatterplot of Salary vs. Runs")
+cor.test(Salary, Runs)
+plot(x = hittersdata$Salary , y = hittersdata$RBI, main = "Scatterplot of Salary vs. RBI")
+cor.test(Salary, RBI)
+plot(x = hittersdata$Salary , y = hittersdata$Walks, main = "Scatterplot of Salary vs. Walks")
+cor.test(Salary, Walks)
+plot(x = hittersdata$Salary , y = hittersdata$Years, main = "Scatterplot of Salary vs. Years")
+cor.test(Salary, Years)
+plot(x = hittersdata$Salary , y = hittersdata$CAtBat, main = "Scatterplot of Salary vs. CAtBat")
+cor.test(Salary, CAtBat)
+plot(x = hittersdata$Salary , y = hittersdata$CHits, main = "Scatterplot of Salary vs. CHits")
+cor.test(Salary, CHits)
+plot(x = hittersdata$Salary , y = hittersdata$CHmRun, main = "Scatterplot of Salary vs. CHmRun")
+cor.test(Salary, CHmRun)
+plot(x = hittersdata$Salary , y = hittersdata$CRuns, main = "Scatterplot of Salary vs. CRuns")
+cor.test(Salary, CRuns)
+plot(x = hittersdata$Salary , y = hittersdata$CRBI, main = "Scatterplot of Salary vs. CRBI")
+cor.test(Salary, CRBI)
+plot(x = hittersdata$Salary , y = hittersdata$CWalks, main = "Scatterplot of Salary vs. CWalks")
+cor.test(Salary, CWalks)
+plot(x = hittersdata$Salary , y = hittersdata$PutOuts, main = "Scatterplot of Salary vs. PutOuts")
+cor.test(Salary, PutOuts)
+plot(x = hittersdata$Salary , y = hittersdata$Assists, main = "Scatterplot of Salary vs. Assists")
+cor.test(Salary, Assists)
+plot(x = hittersdata$Salary , y = hittersdata$Errors, main = "Scatterplot of Salary vs. Errors")
+cor.test(Salary, Errors)
+plot(Salary~League)
+t.test(Salary~League)
+plot(Salary~NewLeague)
+t.test(Salary~NewLeague)
+plot(Salary~Division)
+t.test(Salary~Division)
+```
+ans:predictors-PutOuts, Cwalks, CRBI, CHmRun,CHits, CAtBat,years,Walks, RBI, Runs, HmRun,Hits, AtBat have moderate correlation with Salary.
+
+```{r}
+summary(hittersdata)
+```
+
+
+
+
+5)Use Caret’s “createDataPartition” method as follows to partition the dataset into hitters_train, and hitters_test (use 90% for training and 10% for testing)
+```{r}
+set.seed(1)
+
+library(caret)
+inTrain = createDataPartition(hittersdata$Salary, p=0.9, list=FALSE)
+hitters_train = hittersdata[inTrain,]
+hitters_test = hittersdata[-inTrain,-19]
+hitters_test_labels = hittersdata[-inTrain,19]
+```
+
+
+6)Neural networks do not accept categorical variables and we must encode the categorical variables before training the network. All the categorical variables in this dataset are binary ( i.e., have two levels) so you can encode them by simply using ifelse function to convert each to a numeric variable with two values 0 and 1.
+
+```{r}
+hitters_train$League= ifelse(hitters_train$League== "N", 0,1)
+hitters_train$Division= ifelse(hitters_train$Division== "W", 0,1)
+hitters_train$NewLeague= ifelse(hitters_train$NewLeague== "N", 0,1)
+str(hitters_train)
+
+```
+
+7)Replace the salary column with log(salary) where log is the logarithm function. This will be the attribute we want to predict.
+```{r}
+hitters_train$Salary = log(hitters_train$Salary)
+str(hitters_train)
+```
+
+8)Set.seed(1) and further divide the hitters_train data into 90% training and 10% validation using Caret’s “CreateDataPartition” function.
+```{r}
+set.seed(1)
+intrain1= createDataPartition(hitters_train$Salary, p=0.9, list= FALSE)
+hitters_train_x= hitters_train[intrain1, -19]
+hitters_train_y= hitters_train[intrain1, 19]
+
+hitters_val_x= hitters_train[intrain1, -19]
+hitters_val_y= hitters_train[intrain1, 19]
+str(hitters_train_x)
+str(hitters_train_y)
+```
+
+9)Scale the numeric attributes in the training data (except for the outcome variable, Salary). Use the column means and column standard deviations from the training data to scale both the validation and test data.
+```{r}
+numeric_cols=c("AtBat","Hits","HmRun","Runs","RBI","Walks","Years","CAtBat","CHits","CHmRun","CRuns","CRBI","CWalks","PutOuts","Assists","Errors")
+
+col_means_train<-attr(scale(hitters_train_x[,numeric_cols]), "scaled:center")
+col_stddevs_train<-attr( scale(hitters_train_x[,numeric_cols]), "scaled:scale")
+hitters_train_x[numeric_cols]= scale(hitters_train_x[numeric_cols])
+hitters_val_x[numeric_cols]<-scale(hitters_val_x[numeric_cols], center = col_means_train, scale = col_stddevs_train)
+
+```
+
+
+```{r}
+categorical_cols=hitters_train_x[c("League","Division","NewLeague")]
+hnum=as.data.frame(hitters_train_x[numeric_cols])
+str(hnum)
+hittersnewdata=cbind(hnum,categorical_cols) 
+str(hittersnewdata)
+```
+
+
+
+```{r}
+library(keras)
+model1 <-keras_model_sequential() %>%
+layer_dense(units = 16, activation = "relu", input_shape= dim(hittersnewdata)[2]) %>%
+  layer_dense(units = 16,activation="relu" ) %>%
+layer_dense(units = 1)
+```
+
+
+```{r}
+model1
+```
+
+```{r}
+model1 %>% compile(
+loss = "mse",
+optimizer = "adam")
+model1
+```
+
+```{r}
+history <-model1 %>% fit(as.matrix(hittersnewdata),hitters_train_y,batch_size=50,epochs = 50, validation_data=list(as.matrix(hitters_val_x),hitters_val_y), verbose=2)
+```
+
+```{r}
+library(tfruns)
+problem2runs=tuning_run("hitters_hyperparameters.R",
+           flags=list(
+             learning_rate=c(0.1,0.01,0.001,0.0001),
+             batch_size=c(16,16,1),
+             activation_function=c("relu","relu"),
+             units1=c(16,32,64,128),
+             units2=c(16,32,64,128)
+           ),
+           sample=0.01
+         )
+```
+
+```{r}
+problem2runs=problem2runs[order(problem2runs$metric_val_loss, decreasing=TRUE),]
+problem2runs
+```
+```{r}
+view_run(problem2runs$run_dir[4])
+```
+
+```{r}
+hittersnewtrdata=rbind(hittersnewdata, hitters_val_x)
+hittersnewtrdata_labels=c(hitters_train_y, hitters_val_y)
+str(hittersnewtrdata)
+str(hittersnewtrdata_labels)
+```
+
+
+```{r}
+library(keras)
+model1 <-keras_model_sequential() %>%
+layer_dense(units = 128, activation = "relu", input_shape= dim(hittersnewtrdata)[2]) %>%
+  layer_dense(units = 16,activation="relu" ) %>%
+layer_dense(units = 1)
+model1 %>% compile(
+loss = "mse",
+optimizer = optimizer_adam(learning_rate=0.1))
+history <-model1 %>% fit(as.matrix(hittersnewtrdata),hittersnewtrdata_labels ,batch_size=16,epochs = 50, validation_data=list(as.matrix(hitters_val_x),hitters_val_y), verbose=2)
+```
+9)
+ans: We see that the validation_loss is slightly greater than the training loss after about 15 epochs, this means that network is slightly overfitting the training data.
+We see that after about 15 epochs the validation loss, training loss does not decrease anymore .
+
+```{r}
+hitters_test$League= ifelse(hitters_test$League== "N", 0,1)
+hitters_test$Division= ifelse(hitters_test$Division== "W", 0,1)
+hitters_test$NewLeague= ifelse(hitters_test$NewLeague== "N", 0,1)
+str(hitters_test)
+hitters_test[numeric_cols]<-scale(hitters_test[numeric_cols], center = col_means_train, scale = col_stddevs_train)
+htest=as.data.frame(hitters_test[numeric_cols])
+categorical_cols_test=hitters_test[c("League","Division","NewLeague")]
+hittersnewtestdata=cbind(htest,categorical_cols_test) 
+str(hittersnewtestdata)
+```
+
+10)Now let's find the performance of this best model on the test data:
+```{r}
+model1 %>% evaluate((as.matrix(hittersnewtestdata)), hitters_test_labels)
+```
+```{r}
+predictions_hitters=model1 %>% predict(as.matrix(hittersnewtestdata))
+predictions_hitters=exp(predictions_hitters)
+rmse= function(x,y){
+return((mean((x -y)^2))^0.5)
+}
+rmse(predictions_hitters,hitters_test_labels)
+```
+rmse:386.2828
+
+
+11)linear regression model to predict the salary
+```{r}
+library(caret)
+tr.control1 = trainControl(method="cv", number = 10)
+
+hitters.lm<-lm(Salary~., data = as.data.frame(hittersdata[1:239,]))
+
+summary(hitters.lm)
+
+set.seed(123)
+
+hitters.cv.lm=train(Salary~., method="lm", data=hittersdata[1:239,], trControl=tr.control1)
+hitters.cv.lm
+summary(hitters.cv.lm)
+predictions_lmhitters= predict(hitters.cv.lm, hittersdata[240:263,])
+
+rmse=function(predictions, truevalues)
+  return(sqrt(mean((predictions-truevalues)^2)))
+
+print("rmse:")
+rmse(predictions_lmhitters, hittersdata[240:263,]$Salary)
+
+```
+
+ans: RMSE of neural network model:386.2828 
+     RMSE of linear regression model:305.8043
+both models are doing good. Both models are having RMSE with less difference.  
+To conclude, my neural network model is doing good when compared to linear regression model.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
